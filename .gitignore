@@ -1,0 +1,47 @@
+@"
+# real data 
+data/
+raw/
+processed/
+anonymised/
+outputs/
+exports/
+real_data/
+private_data/
+
+# real application/inventory/database files
+*.xlsx
+*.xls
+*.xlsm
+*.csv
+*.tsv
+*.json
+*.sqlite
+*.db
+*.parquet
+*.pkl
+*.pbix
+*.pbit
+*.pdf
+
+# fake/sample data
+!sample_data/
+!sample_data/*.csv
+!sample_data/*.json
+
+# Environment/config
+.env
+.env.*
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+"@ | Set-Content .gitignore
