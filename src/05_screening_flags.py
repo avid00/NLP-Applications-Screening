@@ -16,7 +16,30 @@ CHILD_TABLE_FLAGS = {
     "T009": "supporting_documents",
     "T010": "proof_current_status",
 }
+PERSONAL_STATEMENT_FIELDS = [
+    "personal_statement_meaning_of_study",
+    "course_interest_statement",
+]
 
+REQUIRED_FIELDS_BY_TABLE = {
+    "T001": [
+        "course_name",
+        "course_code",
+        "years_in_ireland",
+        "current_status",
+        "personal_statement",
+    ],
+    "T004": [
+        "course_code",
+        "years_in_ireland",
+        "current_status",
+    ],
+    "T005": [
+        "course_code",
+        "years_in_ireland",
+        "current_status",
+    ],
+}
 
 def is_missing(value):
     """Return True if a value is blank/null/meaningless."""
@@ -59,23 +82,30 @@ def get_keyed_table_map(con):
 
 
 def add_basic_missing_flags(df):
-    """Create screening flags from applications_master columns."""
+    """Create missingness flags only where the field was expected on that form."""
 
-    optional_columns = [
+    all_possible_fields = {
         "course_name",
         "course_code",
         "years_in_ireland",
         "current_status",
         "personal_statement",
-    ]
+    }
 
-    for col in optional_columns:
-        flag_name = f"flag_missing_{col}"
+    for field in all_possible_fields:
+        flag_name = f"flag_missing_{field}"
+        df[flag_name] = pd.NA
 
-        if col in df.columns:
-            df[flag_name] = df[col].apply(is_missing)
-        else:
-            df[flag_name] = pd.NA
+        for table_id, required_fields in REQUIRED_FIELDS_BY_TABLE.items():
+            mask = df["_source_table_id"] == table_id
+
+            if field in required_fields:
+                if field in df.columns:
+                    df.loc[mask, flag_name] = df.loc[mask, field].apply(is_missing)
+                else:
+                    df.loc[mask, flag_name] = True
+            else:
+                df.loc[mask, flag_name] = pd.NA
 
     return df
 
@@ -150,6 +180,42 @@ def add_document_flags(df):
 
     return df
 
+def add_personal_statement_group_flags(df):
+    """
+    Treat all personal statement / course interest text fields as one NLP text group.
+    Creates:
+    - personal_statement_fields_applicable
+    - personal_statement_fields_missing
+    - flag_missing_all_personal_statement_text
+    - flag_missing_any_personal_statement_text
+    """
+
+    available_fields = [
+        col for col in PERSONAL_STATEMENT_FIELDS
+        if col in df.columns
+    ]
+
+    df["personal_statement_fields_applicable"] = len(available_fields)
+
+    if not available_fields:
+        df["personal_statement_fields_missing"] = pd.NA
+        df["flag_missing_all_personal_statement_text"] = pd.NA
+        df["flag_missing_any_personal_statement_text"] = pd.NA
+        return df
+
+    missing_matrix = df[available_fields].map(is_missing)
+
+    df["personal_statement_fields_missing"] = missing_matrix.sum(axis=1)
+
+    df["flag_missing_all_personal_statement_text"] = (
+        df["personal_statement_fields_missing"] == len(available_fields)
+    )
+
+    df["flag_missing_any_personal_statement_text"] = (
+        df["personal_statement_fields_missing"] > 0
+    )
+
+    return df
 
 def add_completeness_score(df):
     """Calculate a simple completeness score from available flags."""
@@ -190,9 +256,11 @@ def build_screening_flags():
         )
 
         df = add_basic_missing_flags(df)
+        df = add_personal_statement_group_flags(df)
         df = add_child_table_counts(df, con)
         df = add_document_flags(df)
         df = add_completeness_score(df)
+        
 
         df.to_sql(
             OUTPUT_TABLE,
